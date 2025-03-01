@@ -29,6 +29,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${geistSans.variable} antialiased min-h-screen flex flex-col`}
+        suppressHydrationWarning
       >
         <Header />
         <Navbar />
