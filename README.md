@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WebtoonTL - Webtoon Translation Service
+
+WebtoonTL is a web application built with Next.js that allows users to translate webtoons and comics while preserving the original artwork. The service focuses on translating PSD files containing comic/webtoon content into different languages.
+
+## Features
+
+- **File Upload**: Support for uploading PSD files
+- **Multiple Language Support**: Translate your content into 30 languages
+- **Fast Processing**: Advanced AI technology completes most translations within minutes
+- **Secure File Handling**: All original artwork and PSD files are handled securely and never shared
+- **Download Translated Files**: Easily download your translated webtoon in PSD format
+
+## Tech Stack
+
+- **Framework**: [Next.js 15](https://nextjs.org/)
+- **Authentication**: [NextAuth.js](https://next-auth.js.org/) with Prisma adapter
+- **Database**: PostgreSQL with [Prisma ORM](https://www.prisma.io/)
+- **Cloud Storage**: [Google Cloud Storage](https://cloud.google.com/storage) for file handling
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **PSD Processing**: [Adobe Photoshop API](https://developer.adobe.com/photoshop/) for handling PSD files
+- **Translation**: [DeepL API](https://www.deepl.com/docs-api) for high-quality text translation
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+ and npm/yarn
+- PostgreSQL database
+- Google Cloud Service Account (for storage)
+- Adobe Photoshop API credentials (To access to PSD files)
+- DeepL API key (for translation)
+
+### Environment Setup
+
+Create a `.env.local` file with the following variables:
+
+
 ```
+ADOBE_CLIENT_ID="example"
+ADOBE_CLIENT_SECRET="example"
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+DEEPL_API_KEY="example"
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+GCS_KEYFILE="example"
+GCS_PROJECT_ID="example"
+GCS_BUCKET_NAME="example"
+```
