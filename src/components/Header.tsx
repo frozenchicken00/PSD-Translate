@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { auth } from '@/auth';
+import { auth } from '@/auth'
+import ThemeToggle from './ThemeSwitch';
 
 export default async function Header() {
   const session = await auth();
@@ -10,12 +11,13 @@ export default async function Header() {
       <div className="container mx-auto px-4 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2">
           <div className="comic-panel bg-primary p-1 rotate-3">
-            <h1 className="text-3xl font-bold text-white transform -rotate-3">WebtoonTL</h1>
+            <h1 className="text-3xl font-bold transform -rotate-3">WebtoonTL</h1>
           </div>
           <span className="text-sm font-medium italic">Your Webtoon Translation Hub</span>
         </Link>
         
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           {user ? (
             <div className="flex items-center gap-3">
               {user.image ? (

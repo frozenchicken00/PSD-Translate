@@ -4,6 +4,7 @@ import "./globals.css";
 import Header from "@/components/Header";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { ThemeProvider } from "@/components/Theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,12 +32,14 @@ export default function RootLayout({
         className={`${geistSans.variable} antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
+        <ThemeProvider>
         <Header />
         <Navbar />
         <main className="container mx-auto px-4 py-8 flex-grow">
           {children}
         </main>
         <Footer />
+        </ThemeProvider>
       </body>
     </html>
   );

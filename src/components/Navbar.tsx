@@ -1,8 +1,29 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export default function Navbar() {
+  const [isSticky, setIsSticky] = useState(false);
+  
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsSticky(window.scrollY > 1);
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    
+    handleScroll();
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+  
   return (
-    <nav className="bg-secondary text-white shadow-md">
+    <nav className={`shadow-md sticky top-0 z-10 transition-colors duration-300 ${
+      isSticky ? 'bg-[var(--background)]' : 'bg-primary'
+    }`}>
       <div className="container mx-auto px-4 py-3">
         <ul className="flex gap-6 items-center justify-center font-bold">
           <li className="transform hover:rotate-2 transition-transform">
@@ -13,6 +34,7 @@ export default function Navbar() {
               Home
             </Link>
           </li>
+          {/* Other menu items remain the same */}
           <li className="transform hover:-rotate-2 transition-transform">
             <Link href="/upload-file" className="flex items-center gap-2 hover:text-accent">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
