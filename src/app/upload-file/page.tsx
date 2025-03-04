@@ -168,11 +168,12 @@ export default function TranslatePage() {
               value={targetLang}
               onChange={handleLanguageChange}
               className="border rounded px-2 py-1"
+              style={{ color: 'black' }}
             >
               {languages.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.name}
-                </option>
+              <option key={lang.code} value={lang.code} style={{ color: 'black' }}>
+                {lang.name}
+              </option>
               ))}
             </select>
           </div>
