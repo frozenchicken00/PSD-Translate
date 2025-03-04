@@ -13,7 +13,18 @@
   --speech-bubble: #E0F7FA;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
+  --background: #1A1B26;
+  --foreground: #D5D6DB;
+  --primary: #FF6B6B;
+  --secondary: #4ECDC4;
+  --accent: #FFE66D;
+  --panel: #24283B;
+  --border: #414868;
+  --speech-bubble: #2D3748;
+}
+
+/* @media (prefers-color-scheme: dark) {
   :root {
     --background: #1A1B26;
     --foreground: #D5D6DB;
@@ -24,7 +35,7 @@
     --border: #414868;
     --speech-bubble: #2D3748;
   }
-}
+} */
 
 @layer base {
   body {
