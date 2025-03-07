@@ -1,0 +1,59 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-webtoon_tl}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database - using your Prisma Accelerate URL
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # Auth configurations
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_GITHUB_ID=${AUTH_GITHUB_ID}
+      - AUTH_GITHUB_SECRET=${AUTH_GITHUB_SECRET}
+      - AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID}
+      - AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET}
+      
+      # Adobe API
+      - ADOBE_CLIENT_ID=${ADOBE_CLIENT_ID}
+      - ADOBE_CLIENT_SECRET=${ADOBE_CLIENT_SECRET}
+      - CLIENT_ID=${CLIENT_ID}
+      
+      # DeepL API
+      - DEEPL_API_KEY=${DEEPL_API_KEY}
+      
+      # Google Cloud Storage
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
+      - GCS_KEYFILE=/app/service-account.json
+      - GCS_PROJECT_ID=${GCS_PROJECT_ID}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    volumes:
+      - ./service-account.json:/app/service-account.json:ro
+    restart: always
+
+volumes:
+  postgres_data:
