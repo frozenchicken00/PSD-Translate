@@ -8,6 +8,11 @@ const imsConfig = {
   clientSecret: process.env.ADOBE_CLIENT_SECRET,
 };
 
+// Check if Adobe credentials are defined
+if (!imsConfig.clientId || !imsConfig.clientSecret) {
+  throw new Error('Adobe API credentials (ADOBE_CLIENT_ID and ADOBE_CLIENT_SECRET) are required');
+}
+
 // DeepL API Configuration
 const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEFAULT_TARGET_LANG = "EN";
@@ -29,6 +34,10 @@ const storage = new Storage({
   keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEYFILE,
   projectId: process.env.GCS_PROJECT_ID,
 });
+
+if (!process.env.GCS_BUCKET_NAME) {
+  throw new Error('GCS_BUCKET_NAME environment variable is not defined');
+}
 const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
 
 /**
@@ -40,8 +49,9 @@ async function generateIMSToken() {
     const token = await adobeAuth.credentials.getToken();
     console.log("Generated IMS token:", token.accessToken);
     return token.accessToken;
-  } catch (error) {
-    throw new Error(`Failed to get IMS token: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to get IMS token: ${errorMessage}`);
   }
 }
 
@@ -51,7 +61,7 @@ async function generateIMSToken() {
  * @param {string} targetLang - The target language code
  * @returns {Promise<string>} - The translated text
  */
-async function translateText(text, targetLang = DEFAULT_TARGET_LANG) {
+async function translateText(text: string = "", targetLang = DEFAULT_TARGET_LANG) {
   const response = await fetch("https://api-free.deepl.com/v2/translate", {
     method: "POST",
     headers: {
@@ -78,11 +88,17 @@ async function translateText(text, targetLang = DEFAULT_TARGET_LANG) {
  * @param {string} fileName - The name of the file in GCS
  * @returns {Promise<string>} - The signed URL for reading
  */
-async function uploadToGCS(fileBuffer, fileName) {
+async function uploadToGCS(fileBuffer: Buffer, fileName: string) {
   const file = bucket.file(fileName);
   await file.save(fileBuffer, {
     contentType: "image/vnd.adobe.photoshop",
   });
+
+  // Verify upload success
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new Error(`Failed to upload ${fileName} to GCS`);
+  }
 
   const [signedUrl] = await file.getSignedUrl({
     action: "read",
@@ -98,7 +114,7 @@ async function uploadToGCS(fileBuffer, fileName) {
  * @param {string} fileName - The name of the file in GCS
  * @returns {Promise<string>} - The signed URL for writing
  */
-async function getWriteSignedUrl(fileName) {
+async function getWriteSignedUrl(fileName: string) {
   const file = bucket.file(fileName);
   const [signedUrl] = await file.getSignedUrl({
     action: "write",
@@ -118,7 +134,7 @@ async function getWriteSignedUrl(fileName) {
  * @param {object} requestBody - Request payload
  * @returns {Promise<any>}
  */
-async function postPhotoshopAPI(endpoint, apiKey, token, requestBody) {
+async function postPhotoshopAPI(endpoint:string, apiKey:string, token:string, requestBody:object) {
   console.log("Sending request to:", endpoint);
   console.log("Headers:", {
     Authorization: `Bearer ${token}`,
@@ -155,9 +171,9 @@ async function postPhotoshopAPI(endpoint, apiKey, token, requestBody) {
  * @param {string} type - Type of operation (e.g., "Manifest", "Translation")
  * @returns {Promise<any>}
  */
-async function pollStatus(pollingUrl, apiKey, token, type = "operation") {
+async function pollStatus(pollingUrl:string, apiKey:string, token:string, type = "operation") {
   let attempts = 0;
-  const maxAttempts = 10;
+  const maxAttempts = 15; // Increased from 10 to 15 for more reliability
   const delay = 5000;
 
   while (attempts < maxAttempts) {
@@ -203,8 +219,17 @@ async function pollStatus(pollingUrl, apiKey, token, type = "operation") {
  * @param {Array} layers - Array of layer objects
  * @returns {Array} - Array of textLayer objects
  */
-function findTextLayers(layers) {
-  const textLayers = [];
+interface Layer {
+  type: string;
+  name: string;
+  text?: {
+    content: string;
+  };
+  children?: Layer[];
+}
+
+function findTextLayers(layers: Layer[]): Layer[] {
+  const textLayers: Layer[] = [];
   if (!layers || !Array.isArray(layers)) return textLayers;
 
   for (const layer of layers) {
@@ -226,7 +251,7 @@ function findTextLayers(layers) {
  * @param {string} fileName - Name of the input file
  * @returns {Promise<any>}
  */
-async function getDocumentManifest(token, apiKey, inputPsdBuffer, fileName) {
+async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer:Buffer, fileName:string) {
   const gcsUrl = await uploadToGCS(inputPsdBuffer, fileName);
   const initialResponse = await postPhotoshopAPI(MANIFEST_ENDPOINT, apiKey, token, {
     inputs: [{ href: gcsUrl, storage: "external" }],
@@ -255,15 +280,18 @@ export async function POST(req: NextRequest) {
     const targetLang = typeof targetLangField === "string" ? targetLangField : "EN";
     const arrayBuffer = await fileField.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const fileName = fileField.name;
-    const outputFileName = fileName.replace('.psd', '-translated.psd');
+    
+    // Ensure consistent filename formatting
+    const originalFileName = fileField.name;
+    const sanitizedFileName = originalFileName.replace(/\s+/g, '-').toLowerCase();
+    const outputFileName = sanitizedFileName.replace('.psd', '-translated.psd');
 
     // Translate PSD
     console.log("Authenticating with Adobe...");
     const accessToken = await generateIMSToken();
 
     console.log("Fetching PSD document manifest...");
-    const manifest = await getDocumentManifest(accessToken, imsConfig.clientId, buffer, fileName);
+    const manifest = await getDocumentManifest(accessToken, imsConfig.clientId!, buffer, sanitizedFileName);
     if (!manifest.outputs || !Array.isArray(manifest.outputs) || manifest.outputs.length === 0) {
       throw new Error("No outputs found in manifest response");
     }
@@ -278,7 +306,7 @@ export async function POST(req: NextRequest) {
     console.log("Translating text layers...");
     const translatedLayers = [];
     for (const layer of textLayers) {
-      const originalText = layer.text.content;
+      const originalText = layer.text?.content || '';
       const translatedText = await translateText(originalText, targetLang);
       console.log(`Layer "${layer.name}":`);
       console.log(`  Original: ${originalText}`);
@@ -291,7 +319,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("Sending translated layers to Adobe API...");
-    const inputUrl = await uploadToGCS(buffer, fileName);
+    const inputUrl = await uploadToGCS(buffer, sanitizedFileName);
     const outputUrl = await getWriteSignedUrl(outputFileName);
     const requestBody = {
       inputs: [{ href: inputUrl, storage: "external" }],
@@ -305,16 +333,36 @@ export async function POST(req: NextRequest) {
       ],
     };
 
-    const response = await postPhotoshopAPI(TEXT_ENDPOINT, imsConfig.clientId, accessToken, requestBody);
-    await pollStatus(response._links.self.href, imsConfig.clientId, accessToken, "Translation");
+    const response = await postPhotoshopAPI(TEXT_ENDPOINT, imsConfig.clientId!, accessToken, requestBody);
+    await pollStatus(response._links.self.href, imsConfig.clientId!, accessToken, "Translation");
 
-    // Generate signed URL for download
+    // Add a short delay to ensure file is fully written
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3-second delay
+    
+    // Verify the translated file exists in GCS before generating the signed URL
+    const [exists] = await bucket.file(outputFileName).exists();
+    if (!exists) {
+      throw new Error(`Translated file ${outputFileName} not found in storage`);
+    }
+    
+    // Optional: Validate file by downloading it to check size
+    const [fileContents] = await bucket.file(outputFileName).download();
+    console.log(`Verified ${outputFileName}, size: ${fileContents.length} bytes`);
+    
+    if (fileContents.length < 100) {
+      throw new Error(`Translated file ${outputFileName} appears to be invalid (too small: ${fileContents.length} bytes)`);
+    }
+
+    // Generate signed URL for download with longer expiration
     const [signedUrl] = await bucket.file(outputFileName).getSignedUrl({
       action: "read",
-      expires: Date.now() + 5 * 60 * 1000, // 5 minutes
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+      responseDisposition: `attachment; filename="${outputFileName}"`,
     });
 
-    // Schedule deletion after 1 minutes
+    console.log(`Final download URL: ${signedUrl}`);
+
+    // Schedule deletion after 30 minutes
     setTimeout(async () => {
       try {
         await bucket.file(outputFileName).delete();
@@ -322,11 +370,18 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error(`Failed to delete ${outputFileName}:`, err);
       }
-    }, 60 * 1000);
+    }, 30 * 60 * 1000);
 
-    return NextResponse.json({ downloadUrl: signedUrl });
+    return NextResponse.json({ 
+      downloadUrl: signedUrl,
+      filename: outputFileName,
+      size: fileContents.length,
+      status: "success"
+    });
   } catch (error) {
     console.error("Translation error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : "Internal Server Error" 
+    }, { status: 500 });
   }
 }
