@@ -56,24 +56,31 @@ export default function TranslatePage() {
     e.preventDefault();
     if (!file) return;
     setLoading(true);
-
+  
     const formData = new FormData();
     formData.append("psd", file);
     formData.append("targetLang", targetLang);
-
-    const res = await fetch("/api/translate", {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) {
-      alert("Translate failed!");
+  
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!res.ok) {
+        throw new Error("Translation failed");
+      }
+      
+      // Parse the JSON response instead of treating it as a blob
+      const data = await res.json();
+      
+      // Use the downloadUrl from the response
+      setDownloadUrl(data.downloadUrl);
       setLoading(false);
-      return;
+    } catch (error) {
+      alert("Translation failed: " + (error instanceof Error ? error.message : "Unknown error"));
+      setLoading(false);
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    setDownloadUrl(url);
-    setLoading(false);
   };
 
   return (
@@ -84,7 +91,7 @@ export default function TranslatePage() {
         </h1>
         <div className="speech-bubble max-w-2xl mx-auto">
           <p>
-            Upload your PSD file, choose the target language, and we'll
+            Upload your PSD file, choose the target language, and we&apos;ll
             translate the text while preserving the artwork!
           </p>
         </div>

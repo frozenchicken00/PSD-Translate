@@ -46,7 +46,7 @@ export default function Home() {
 
         <div className="comic-panel zoom-effect bg-accent/20">
           <h2 className="text-2xl mb-4">Get Started Now</h2>
-          <p className="mb-4">It's easy to begin! Sign in with your account and upload your first webtoon.</p>
+          <p className="mb-4">It&apos;s easy to begin! Sign in with your account and upload your first webtoon.</p>
           <div className="flex justify-center mt-4">
             <a href="/upload-file" className="btn text-lg px-8 py-3 flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
