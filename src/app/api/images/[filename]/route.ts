@@ -6,11 +6,10 @@ export const dynamic = 'force-dynamic'; // Don't cache this route
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ filename: string }> | { filename: string } }
+  context: { params: { filename: string } }
 ) {
   try {
-    const paramsData = await params;
-    const filename = paramsData.filename;
+    const filename = context.params.filename;
     
     // Create the URL path that was stored in the database
     const urlPath = `/api/images/${filename}`;
