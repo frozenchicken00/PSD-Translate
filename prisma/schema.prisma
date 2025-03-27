@@ -17,6 +17,12 @@ model User {
   sessions      Session[]
   // Optional for WebAuthn support
   Authenticator Authenticator[]
+  
+  // Community-related fields
+  posts         Post[]
+  comments      Comment[]
+  likes         Like[]
+  savedPosts    SavedPost[]
  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -75,4 +81,126 @@ model Authenticator {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
  
   @@id([userId, credentialID])
+}
+
+// Community models
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  published Boolean  @default(true)
+  
+  // Author relationship
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  // Related content
+  comments  Comment[]
+  likes     Like[]
+  savedBy   SavedPost[]
+  images    PostImage[]
+  tags      PostTag[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PostImage {
+  id        String   @id @default(cuid())
+  url       String
+  caption   String?
+  
+  // Image data
+  blobData  Bytes?   // Binary storage for image data
+  mimeType  String?  // Content type of the image (e.g., "image/jpeg")
+  filename  String?  // Original filename
+  
+  // Post relationship
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PostTag {
+  id      String @id @default(cuid())
+  name    String
+  
+  // Post relationship
+  postId  String
+  post    Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  @@unique([postId, name])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  
+  // Author relationship
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  // Post relationship
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  // Comment relationships
+  parentId  String?
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies   Comment[] @relation("CommentReplies")
+  
+  // Likes
+  likes     CommentLike[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  
+  // User relationship
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Post relationship
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, postId])
+}
+
+model CommentLike {
+  id        String   @id @default(cuid())
+  
+  // User relationship
+  userId    String
+  
+  // Comment relationship
+  commentId String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, commentId])
+}
+
+model SavedPost {
+  id        String   @id @default(cuid())
+  
+  // User relationship
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Post relationship
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, postId])
 }

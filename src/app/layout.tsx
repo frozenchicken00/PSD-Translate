@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import { NextAuthProvider } from "@/components/Providers";
+import { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
@@ -32,14 +33,16 @@ export default function RootLayout({
         className={`${geistSans.variable} antialiased min-h-screen flex flex-col`}
         suppressHydrationWarning
       >
-        <ThemeProvider>
-        <Header />
-        <Navbar />
-        <main className="container mx-auto px-4 py-8 flex-grow">
-          {children}
-        </main>
-        <Footer />
-        </ThemeProvider>
+        <NextAuthProvider>
+          <ThemeProvider>
+            <Header />
+            <Navbar />
+            <main className="container mx-auto px-4 py-8 flex-grow">
+              {children}
+            </main>
+            <Footer />
+          </ThemeProvider>
+        </NextAuthProvider>
       </body>
     </html>
   );
