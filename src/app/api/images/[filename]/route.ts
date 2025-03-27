@@ -1,10 +1,10 @@
-/*
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, handlePrismaOperation } from '@/lib/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic'; // Don't cache this route
 
+// Use the most basic possible type annotation
 export async function GET(
   request: NextRequest,
   { params }: { params: { filename: string } }
@@ -47,4 +47,3 @@ export async function GET(
     );
   }
 }
-*/
