@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic'; // Don't cache this route
 
 export async function GET(
   request: NextRequest,
-  context: { params: { filename: string } }
+  { params }: { params: { filename: string } }
 ) {
   try {
-    const filename = context.params.filename;
+    const filename = params.filename;
     
     // Create the URL path that was stored in the database
     const urlPath = `/api/images/${filename}`;
@@ -45,4 +45,4 @@ export async function GET(
       { status: 500 }
     );
   }
-} 
+}
