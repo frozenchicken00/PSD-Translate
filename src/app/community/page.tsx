@@ -21,7 +21,7 @@ interface Post {
 }
 
 export default function CommunityPage() {
-  const { data: session, status } = useSession();
+  const { data: _session, status: _status } = useSession();
   const [posts, setPosts] = useState<Post[]>([]);
   const [filterTag, setFilterTag] = useState('');
   const [loading, setLoading] = useState(true);

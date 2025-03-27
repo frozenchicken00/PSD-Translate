@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const createData: any = {
+    const createData: Record<string, unknown> = {
       title,
       content,
       authorId: session.user.id as string,
