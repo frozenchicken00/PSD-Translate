@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, FormEvent, ChangeEvent, useEffect } from 'react';
+import { useState, FormEvent, ChangeEvent, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
@@ -29,7 +28,7 @@ export default function EditPostPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errors, setErrors] = useState<{title?: string; content?: string; auth?: string; form?: string; permission?: string}>({});
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [_uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   
   // Fetch post data on component mount
   useEffect(() => {
@@ -302,12 +301,10 @@ export default function EditPostPage() {
                 {existingImages.map((imageUrl, index) => (
                   <div key={index} className="relative group">
                     <div className="aspect-video bg-secondary rounded-lg overflow-hidden">
-                      <Image 
+                      <img 
                         src={imageUrl} 
                         alt={`Image ${index + 1}`} 
-                        fill
-                        sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
-                        className="object-cover" 
+                        className="w-full h-full object-cover" 
                       />
                     </div>
                     <button

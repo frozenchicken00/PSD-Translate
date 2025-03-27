@@ -172,6 +172,6 @@ export async function POST(
   }
 }
 
-const _whereClause: Prisma.PostWhereInput = {
+const whereClause: Prisma.PostWhereInput = {
   // ...
 }; 

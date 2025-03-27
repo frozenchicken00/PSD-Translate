@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { auth } from '@/auth'
 import ThemeToggle from './ThemeSwitch';
 
@@ -23,11 +22,9 @@ export default async function Header() {
             <div className="flex items-center gap-3">
               {user.image ? (
                 <div className="border-2 border-primary rounded-full p-1">
-                  <Image 
+                  <img 
                     src={user.image} 
                     alt={user.name || 'User'} 
-                    width={40}
-                    height={40}
                     className="w-10 h-10 rounded-full"
                   />
                 </div>

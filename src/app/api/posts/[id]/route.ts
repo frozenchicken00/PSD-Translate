@@ -145,7 +145,7 @@ export async function PATCH(
     const { title, content, tags, imageUrls } = await req.json();
 
     // Prepare update data
-    const updateData: Record<string, unknown> = {};
+    const updateData: any = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
 
@@ -250,7 +250,7 @@ export async function DELETE(
     }
 
     // Delete the post (this will cascade delete related entities)
-    const { data: _deletedPost } = await handlePrismaOperation(() =>
+    const { data: deletedPost } = await handlePrismaOperation(() =>
       prisma.post.delete({
         where: { id: postId },
       })

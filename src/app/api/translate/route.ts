@@ -190,7 +190,7 @@ async function postPhotoshopAPI(endpoint:string, apiKey:string, token:string, re
       // Try to parse JSON, with fallback for empty responses
       try {
         return responseText ? JSON.parse(responseText) : {};
-      } catch (_e) {
+      } catch (e) {
         throw new Error(`Invalid JSON response from Adobe API: ${responseText}`);
       }
     } catch (error) {

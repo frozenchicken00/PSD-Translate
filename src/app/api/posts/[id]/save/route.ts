@@ -39,7 +39,7 @@ export async function POST(
     }
 
     // Create a new saved post
-    const { data: _newSavedPost } = await handlePrismaOperation(() =>
+    const { data: newSavedPost } = await handlePrismaOperation(() =>
       prisma.savedPost.create({
         data: {
           userId: session.user?.id as string,
@@ -79,7 +79,7 @@ export async function DELETE(
 
   try {
     // Delete the saved post
-    const { data: _deletedSavedPost } = await handlePrismaOperation(() =>
+    const { data: deletedSavedPost } = await handlePrismaOperation(() =>
       prisma.savedPost.delete({
         where: {
           userId_postId: {

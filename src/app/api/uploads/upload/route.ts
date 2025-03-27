@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const imageUrls: string[] = [];
     
     // Process each file in the form data
-    for (const [_key, value] of formData.entries()) {
+    for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
         const file = value;
         

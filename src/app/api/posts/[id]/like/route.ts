@@ -39,7 +39,7 @@ export async function POST(
     }
 
     // Create a new like
-    const { data: _newLike } = await handlePrismaOperation(() =>
+    const { data: newLike } = await handlePrismaOperation(() =>
       prisma.like.create({
         data: {
           userId: session.user?.id as string,
@@ -86,7 +86,7 @@ export async function DELETE(
 
   try {
     // Delete the like
-    const { data: _deletedLike } = await handlePrismaOperation(() =>
+    const { data: deletedLike } = await handlePrismaOperation(() =>
       prisma.like.delete({
         where: {
           userId_postId: {
