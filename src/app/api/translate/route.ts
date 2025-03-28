@@ -30,15 +30,59 @@ const adobeAuth = new ClientOAuth2({
 });
 
 // GCS Configuration
-const storage = new Storage({
-  // keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEYFILE,
-  credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}'),
-  projectId: process.env.GCS_PROJECT_ID,
+// Initialize storage with a default (will be overwritten)
+let storage = new Storage({
+  projectId: process.env.GCS_PROJECT_ID || '',
 });
+
+const keyFilename = process.env.VERCEL 
+  ? '/var/task/service-account.json'  // Path in Vercel
+  : process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEYFILE;
+
+// Debug service account file access
+let useCredentialsJson = false;
+try {
+  const fs = require('fs');
+  console.log(`Checking if service account file exists at: ${keyFilename}`);
+  if (fs.existsSync(keyFilename)) {
+    const stats = fs.statSync(keyFilename);
+    console.log(`Service account file exists, size: ${stats.size} bytes`);
+    // Initialize storage with keyFilename
+    storage = new Storage({
+      keyFilename,
+      projectId: process.env.GCS_PROJECT_ID,
+    });
+  } else {
+    console.warn(`Service account file NOT found at: ${keyFilename}`);
+    useCredentialsJson = true;
+  }
+} catch (error) {
+  console.error(`Error checking service account file: ${error}`);
+  useCredentialsJson = true;
+}
+
+// If file not found, try to use credentials from environment variable
+if (useCredentialsJson) {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    console.log('Falling back to GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable');
+    try {
+      storage = new Storage({
+        credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON),
+        projectId: process.env.GCS_PROJECT_ID,
+      });
+    } catch (error) {
+      console.error('Error parsing credentials from environment variable:', error);
+      throw new Error('Failed to initialize Google Cloud Storage: Could not parse credentials');
+    }
+  } else {
+    throw new Error('No valid Google Cloud credentials found. Please provide either a service account file or credentials JSON.');
+  }
+}
 
 if (!process.env.GCS_BUCKET_NAME) {
   throw new Error('GCS_BUCKET_NAME environment variable is not defined');
 }
+
 const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
 
 /**
