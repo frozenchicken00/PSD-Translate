@@ -5,7 +5,7 @@ import { prisma, handlePrismaOperation } from "@/lib/db";
 // GET /api/posts/[id]/save/check - Check if the current user has saved the post
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   const paramsData = await params;

@@ -2,17 +2,52 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma, handlePrismaOperation } from "@/lib/db";
 
+// Define Post type to fix TypeScript errors
+type Post = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  author: {
+    id: string;
+    name: string | null;
+    image: string | null;
+  };
+  tags: {
+    name: string;
+  }[];
+  images: {
+    url: string;
+  }[];
+  comments: {
+    id: string;
+    content: string;
+    createdAt: Date;
+    author: {
+      id: string;
+      name: string | null;
+      image: string | null;
+    };
+    _count: {
+      likes: number;
+    };
+  }[];
+  _count: {
+    likes: number;
+  };
+  authorId?: string;
+};
+
 // GET /api/posts/[id] - Get a single post by ID
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const paramsData = await params;
-  const postId = paramsData.id;
+  const postId = (await params).id;
 
   try {
     // Fetch the post with related data
-    const { data: post } = await handlePrismaOperation(() =>
+    const { data: rawPost } = await handlePrismaOperation(() =>
       prisma.post.findUnique({
         where: { id: postId },
         include: {
@@ -61,6 +96,9 @@ export async function GET(
       })
     );
 
+    // Cast to proper type
+    const post = rawPost as Post | null;
+
     if (!post) {
       return NextResponse.json(
         { error: "Post not found" },
@@ -104,11 +142,10 @@ export async function GET(
 // PATCH /api/posts/[id] - Update a post
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  const paramsData = await params;
-  const postId = paramsData.id;
+  const postId = (await params).id;
 
   if (!session?.user?.id) {
     return NextResponse.json(
@@ -119,12 +156,15 @@ export async function PATCH(
 
   try {
     // Get the post to check ownership
-    const { data: post } = await handlePrismaOperation(() =>
+    const { data: rawPost } = await handlePrismaOperation(() =>
       prisma.post.findUnique({
         where: { id: postId },
         select: { authorId: true },
       })
     );
+
+    // Cast to proper type
+    const post = rawPost as { authorId: string } | null;
 
     if (!post) {
       return NextResponse.json(
@@ -212,11 +252,10 @@ export async function PATCH(
 // DELETE /api/posts/[id] - Delete a post
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  const paramsData = await params;
-  const postId = paramsData.id;
+  const postId = (await params).id;
 
   if (!session?.user?.id) {
     return NextResponse.json(
@@ -227,12 +266,15 @@ export async function DELETE(
 
   try {
     // Get the post to check ownership
-    const { data: post } = await handlePrismaOperation(() =>
+    const { data: rawPost } = await handlePrismaOperation(() =>
       prisma.post.findUnique({
         where: { id: postId },
         select: { authorId: true },
       })
     );
+
+    // Cast to proper type
+    const post = rawPost as { authorId: string } | null;
 
     if (!post) {
       return NextResponse.json(

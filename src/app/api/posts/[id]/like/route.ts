@@ -5,11 +5,10 @@ import { prisma, handlePrismaOperation } from "@/lib/db";
 // POST /api/posts/[id]/like - Like a post
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  const paramsData = await params;
-  const postId = paramsData.id;
+  const postId = (await params).id;
 
   if (!session?.user?.id) {
     return NextResponse.json(
@@ -19,34 +18,25 @@ export async function POST(
   }
 
   try {
-    // Check if the user has already liked the post
-    const { data: existingLike } = await handlePrismaOperation(() =>
-      prisma.like.findUnique({
-        where: {
-          userId_postId: {
+    // Upsert the like - this will create a like if it doesn't exist or do nothing if it does
+    const { data } = await handlePrismaOperation(async () => {
+      // First try to create the like
+      try {
+        const like = await prisma.like.create({
+          data: {
             userId: session.user?.id as string,
             postId,
           },
-        },
-      })
-    );
+        });
+        return { created: true, like };
+      } catch (error) {
+        // If creation fails due to unique constraint, the like already exists
+        return { created: false };
+      }
+    });
 
-    if (existingLike) {
-      return NextResponse.json(
-        { error: "You have already liked this post" },
-        { status: 400 }
-      );
-    }
-
-    // Create a new like
-    const { data: newLike } = await handlePrismaOperation(() =>
-      prisma.like.create({
-        data: {
-          userId: session.user?.id as string,
-          postId,
-        },
-      })
-    );
+    // Ensure data is not null
+    const result = data || { created: false };
 
     // Get the updated like count
     const { data: likeCount } = await handlePrismaOperation(() =>
@@ -54,6 +44,13 @@ export async function POST(
         where: { postId },
       })
     );
+
+    if (!result.created) {
+      return NextResponse.json(
+        { message: "You have already liked this post", likes: likeCount },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json(
       { message: "Post liked successfully", likes: likeCount },
@@ -71,11 +68,10 @@ export async function POST(
 // DELETE /api/posts/[id]/like - Unlike a post
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  const paramsData = await params;
-  const postId = paramsData.id;
+  const postId = (await params).id;
 
   if (!session?.user?.id) {
     return NextResponse.json(
@@ -85,17 +81,26 @@ export async function DELETE(
   }
 
   try {
-    // Delete the like
-    const { data: deletedLike } = await handlePrismaOperation(() =>
-      prisma.like.delete({
-        where: {
-          userId_postId: {
-            userId: session.user?.id as string,
-            postId,
+    // Try to delete the like, and catch the error if it doesn't exist
+    const { data } = await handlePrismaOperation(async () => {
+      try {
+        const deletedLike = await prisma.like.delete({
+          where: {
+            userId_postId: {
+              userId: session.user?.id as string,
+              postId,
+            },
           },
-        },
-      })
-    );
+        });
+        return { deleted: true };
+      } catch (error) {
+        // If delete fails, the like doesn't exist
+        return { deleted: false };
+      }
+    });
+
+    // Ensure data is not null
+    const result = data || { deleted: false };
 
     // Get the updated like count
     const { data: likeCount } = await handlePrismaOperation(() =>
@@ -104,14 +109,19 @@ export async function DELETE(
       })
     );
 
+    if (!result.deleted) {
+      return NextResponse.json(
+        { message: "You haven't liked this post", likes: likeCount },
+        { status: 200 }
+      );
+    }
+
     return NextResponse.json(
       { message: "Post unliked successfully", likes: likeCount },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error unliking post:", error);
-    
-    // Check if the error is due to the like not existing
     return NextResponse.json(
       { error: "Failed to unlike post" },
       { status: 500 }

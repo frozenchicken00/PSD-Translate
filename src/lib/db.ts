@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 // Create a singleton instance of PrismaClient
 declare global {
-  const prisma: PrismaClient | undefined;
+  var prisma: PrismaClient | undefined;
 }
 
 // Use a single instance of Prisma Client in development

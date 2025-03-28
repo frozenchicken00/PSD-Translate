@@ -1,22 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, handlePrismaOperation } from "@/lib/db";
 import { Prisma } from '@prisma/client';
 
+// Define types to fix TypeScript errors
+type Comment = {
+  id: string;
+  content: string;
+  authorId: string;
+  postId: string;
+  parentId: string | null;
+  createdAt: Date;
+  author: {
+    id: string;
+    name: string | null;
+    image: string | null;
+  };
+  _count: {
+    likes: number;
+    replies: number;
+  };
+};
+
 // GET /api/posts/[id]/comments - Get comments for a post
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { id: postId } = params;
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: postId } = await params;
   const { searchParams } = new URL(req.url);
   const parentId = searchParams.get("parentId");
-  
+
   try {
     // Check if post exists
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-    });
+    const { data: post } = await handlePrismaOperation(() => 
+      prisma.post.findUnique({
+        where: { id: postId },
+      })
+    );
     
     if (!post) {
       return NextResponse.json(
@@ -26,30 +44,36 @@ export async function GET(
     }
     
     // Query for comments
-    const comments = await prisma.comment.findMany({
-      where: {
-        postId,
-        parentId: parentId || null, // If parentId is provided, get replies, otherwise get top-level comments
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
+    const { data: rawComments } = await handlePrismaOperation(() => 
+      prisma.comment.findMany({
+        where: {
+          postId,
+          parentId: parentId || null,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
+          },
+          _count: {
+            select: {
+              likes: true,
+              replies: true,
+            },
           },
         },
-        _count: {
-          select: {
-            likes: true,
-            replies: true,
-          },
+        orderBy: {
+          createdAt: "desc",
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+      })
+    );
+    
+    // Cast to correct type
+    const comments = rawComments as Comment[];
+    
     // Format comments for API response
     const formattedComments = comments.map((comment) => ({
       id: comment.id,
@@ -73,20 +97,17 @@ export async function GET(
 }
 
 // POST /api/posts/[id]/comments - Add a comment to a post
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  const { id: postId } = params;
-  
-  if (!session || !session.user) {
+  const { id: postId } = await params;
+
+  if (!session?.user?.id) {
     return NextResponse.json(
       { error: "You must be logged in to comment" },
       { status: 401 }
     );
   }
-  
+
   try {
     const { content, parentId } = await req.json();
     
@@ -98,9 +119,11 @@ export async function POST(
     }
     
     // Check if post exists
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-    });
+    const { data: post } = await handlePrismaOperation(() => 
+      prisma.post.findUnique({
+        where: { id: postId },
+      })
+    );
     
     if (!post) {
       return NextResponse.json(
@@ -111,9 +134,14 @@ export async function POST(
     
     // If this is a reply, check if parent comment exists
     if (parentId) {
-      const parentComment = await prisma.comment.findUnique({
-        where: { id: parentId },
-      });
+      const { data: rawParentComment } = await handlePrismaOperation(() => 
+        prisma.comment.findUnique({
+          where: { id: parentId },
+        })
+      );
+      
+      // Cast to correct type
+      const parentComment = rawParentComment as { postId: string } | null;
       
       if (!parentComment) {
         return NextResponse.json(
@@ -132,23 +160,37 @@ export async function POST(
     }
     
     // Create the comment
-    const comment = await prisma.comment.create({
-      data: {
-        content,
-        authorId: session.user.id as string,
-        postId,
-        ...(parentId && { parentId }),
-      },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
+    const { data: rawComment } = await handlePrismaOperation(() => 
+      prisma.comment.create({
+        data: {
+          content,
+          authorId: session.user!.id as string,
+          postId,
+          ...(parentId && { parentId }),
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
           },
         },
-      },
-    });
+      })
+    );
+    
+    // Cast to correct type
+    const comment = rawComment as {
+      id: string;
+      content: string;
+      createdAt: Date;
+      author: {
+        id: string;
+        name: string | null;
+        image: string | null;
+      };
+    };
     
     // Format comment for API response
     const formattedComment = {

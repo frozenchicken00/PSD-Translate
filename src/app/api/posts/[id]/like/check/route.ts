@@ -5,11 +5,10 @@ import { prisma, handlePrismaOperation } from "@/lib/db";
 // GET /api/posts/[id]/like/check - Check if the current user has liked the post
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  const paramsData = await params;
-  const postId = paramsData.id;
+  const postId = (await params).id;
 
   // Check if user is authenticated
   if (!session?.user?.id) {

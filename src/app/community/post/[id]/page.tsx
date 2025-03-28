@@ -437,7 +437,7 @@ export default function PostPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {post.images.map((img, index) => (
               <div key={index} className="relative h-64 rounded-lg overflow-hidden border border-border">
-                <img
+                <Image
                   src={img}
                   alt={`Image ${index + 1}`}
                   className="w-full h-full object-cover"

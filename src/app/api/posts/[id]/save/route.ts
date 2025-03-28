@@ -5,7 +5,7 @@ import { prisma, handlePrismaOperation } from "@/lib/db";
 // POST /api/posts/[id]/save - Save a post
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   const paramsData = await params;
@@ -64,7 +64,7 @@ export async function POST(
 // DELETE /api/posts/[id]/save - Unsave a post
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   const paramsData = await params;

@@ -2,6 +2,7 @@
 
 import { useState, FormEvent, ChangeEvent, useCallback, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image'
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
@@ -301,10 +302,12 @@ export default function EditPostPage() {
                 {existingImages.map((imageUrl, index) => (
                   <div key={index} className="relative group">
                     <div className="aspect-video bg-secondary rounded-lg overflow-hidden">
-                      <img 
+                      <Image
                         src={imageUrl} 
                         alt={`Image ${index + 1}`} 
                         className="w-full h-full object-cover" 
+                        width={100}
+                        height={100}
                       />
                     </div>
                     <button

@@ -4,6 +4,15 @@ import { prisma, handlePrismaOperation } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
+// Define the image type to fix TypeScript errors
+type PostImage = {
+  url: string;
+  blobData: Buffer;
+  mimeType: string;
+  filename: string;
+  postId: string;
+};
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   
@@ -35,7 +44,7 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(await file.arrayBuffer());
         
         // Store in database as a temporary image (not yet attached to a post)
-        const { data: image } = await handlePrismaOperation(() => 
+        const { data } = await handlePrismaOperation(() => 
           prisma.postImage.create({
             data: {
               url: `/api/images/${safeName}`, // URL for the API endpoint that will serve this image
@@ -46,6 +55,9 @@ export async function POST(req: NextRequest) {
             },
           })
         );
+        
+        // Cast data to the correct type
+        const image = data as PostImage | null;
         
         if (image) {
           imageUrls.push(image.url);

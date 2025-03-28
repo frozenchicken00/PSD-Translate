@@ -1,5 +1,6 @@
 import { auth, signOut } from "@/auth"
 import { redirect } from 'next/navigation'
+import Image from "next/image"
 
 export default async function Profile() {
     const session = await auth();
@@ -23,10 +24,12 @@ export default async function Profile() {
                         {user.image ? (
                             <div className="relative">
                                 <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden">
-                                    <img 
+                                    <Image
                                         src={user.image} 
                                         alt={user.name || 'User'} 
                                         className="w-full h-full object-cover"
+                                        width={100}
+                                        height={100}
                                     />
                                 </div>
                                 <div className="absolute -bottom-2 -right-2 bg-accent rounded-full p-1">

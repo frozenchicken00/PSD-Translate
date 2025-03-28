@@ -3,6 +3,36 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma, handlePrismaOperation } from "@/lib/db";
 
+// Define types to fix TypeScript errors
+type PostWithRelations = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  author: {
+    id: string;
+    name: string | null;
+    image: string | null;
+  };
+  tags: {
+    name: string;
+  }[];
+  images: {
+    id: string;
+    url: string;
+  }[];
+  _count: {
+    comments: number;
+    likes: number;
+  };
+};
+
+type PostImage = {
+  id: string;
+  url: string;
+  postId: string;
+};
+
 // GET /api/posts - Get all posts
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -76,7 +106,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Transform the posts to match the frontend expected format
-    const formattedPosts = posts.map((post) => ({
+    const formattedPosts = posts.map((post: PostWithRelations) => ({
       id: post.id,
       title: post.title,
       content: post.content,
@@ -86,7 +116,7 @@ export async function GET(req: NextRequest) {
       date: post.createdAt.toISOString().split("T")[0],
       likes: post._count.likes,
       comments: post._count.comments,
-      tags: post.tags.map((tag) => tag.name),
+      tags: post.tags.map((tag: { name: string }) => tag.name),
       image: post.images.length > 0 ? post.images[0].url : null,
     }));
 
@@ -150,13 +180,16 @@ export async function POST(req: NextRequest) {
         })
       );
 
-      if (existingImages && existingImages.length > 0) {
+      // Cast to proper type
+      const images = existingImages as PostImage[] | null;
+
+      if (images && images.length > 0) {
         // Update the temporary images to connect them to this post
-        for (const image of existingImages) {
+        for (const image of images) {
           await handlePrismaOperation(() => 
             prisma.postImage.update({
               where: { id: image.id },
-              data: { postId: 'pending' }, // We'll update this after the post is created
+              data: { postId: 'pending' },
             })
           );
         }
@@ -164,7 +197,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create post with tags
-    const { data: post } = await handlePrismaOperation(() => 
+    const { data: newPost } = await handlePrismaOperation(() => 
       prisma.post.create({
         data: createData,
         include: {
@@ -180,6 +213,9 @@ export async function POST(req: NextRequest) {
         },
       })
     );
+
+    // Cast to proper type
+    const post = newPost as PostWithRelations | null;
 
     if (post && imageUrls && imageUrls.length > 0) {
       // Now update the images with the actual post ID
