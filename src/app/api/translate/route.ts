@@ -31,8 +31,8 @@ const adobeAuth = new ClientOAuth2({
 
 // GCS Configuration
 const storage = new Storage({
-  // keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEYFILE,
-  credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}'),
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEYFILE,
+  // credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}'),
   projectId: process.env.GCS_PROJECT_ID,
 });
 

@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "api/translate-start/**": {
+      "memory": 3008,
+      "maxDuration": 60
+    },
+    "api/gcs-upload-url/**": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/translation-status/**": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
+  "regions": [
+    "iad1"
+  ]
+} 
