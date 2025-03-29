@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 export const runtime = "nodejs";
 
@@ -8,6 +8,8 @@ export default function TranslatePage() {
   const [targetLang, setTargetLang] = useState("EN"); // Default to English
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState<string>("");
 
   const languages = [
     { code: "AR", name: "Arabic" },
@@ -45,6 +47,7 @@ export default function TranslatePage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
+      setUploadProgress(0);
     }
   };
 
@@ -52,33 +55,203 @@ export default function TranslatePage() {
     setTargetLang(e.target.value);
   };
 
+  // Function to upload file directly to GCS using signed URL
+  const uploadFileToGcs = async (file: File, signedUrl: string): Promise<boolean> => {
+    try {
+      setCurrentStep("Uploading file to cloud storage...");
+      
+      // Create a ReadableStream from the file
+      const stream = file.stream();
+      const reader = stream.getReader();
+      
+      let uploaded = 0;
+      const fileSize = file.size;
+      
+      // Manual progress tracking for fetch
+      const updateProgress = (chunk: Uint8Array) => {
+        uploaded += chunk.length;
+        const percentComplete = Math.round((uploaded / fileSize) * 100);
+        setUploadProgress(percentComplete);
+      };
+      
+      // Use a simpler fetch-based approach instead of XMLHttpRequest
+      const response = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'x-goog-acl': 'public-read'
+        },
+        body: file, // Send the file directly
+        // credentials: 'omit' // Don't send credentials
+      });
+      
+      // Simulate progress since fetch doesn't have progress events
+      const simulateProgress = async () => {
+        let currentProgress = 0;
+        const increment = 5;
+        const delay = 500;
+        
+        while (currentProgress < 100) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          currentProgress = Math.min(95, currentProgress + increment);
+          setUploadProgress(currentProgress);
+        }
+      };
+      
+      // Start progress simulation
+      simulateProgress();
+      
+      if (!response.ok) {
+        console.error('Upload failed with status:', response.status);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`Upload failed with status ${response.status}: ${response.statusText}`);
+      }
+      
+      // Complete the progress
+      setUploadProgress(100);
+      console.log('Upload completed successfully');
+      
+      return true;
+    } catch (error) {
+      console.error("Error uploading to GCS:", error);
+      // For debugging purposes, check if errors are related to CORS
+      if (error instanceof Error && error.message.includes('NetworkError')) {
+        console.error('This appears to be a CORS-related issue');
+      }
+      throw error;
+    }
+  };
+
+  // Try another upload approach if the above doesn't work
+  const fallbackUpload = async (file: File, signedUrl: string, fileName: string): Promise<boolean> => {
+    try {
+      setCurrentStep("Trying fallback upload method...");
+      
+      // Upload the file through your own server as a fallback
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('fileName', fileName);
+      
+      const response = await fetch('/api/proxy-upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Fallback upload failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result.success;
+    } catch (error) {
+      console.error("Error with fallback upload:", error);
+      throw error;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
+    
     setLoading(true);
-  
-    const formData = new FormData();
-    formData.append("psd", file);
-    formData.append("targetLang", targetLang);
-  
+    setCurrentStep("Preparing upload...");
+    setDownloadUrl(null);
+    
     try {
-      const res = await fetch("/api/translate", {
-        method: "POST",
-        body: formData,
-      });
-      
-      if (!res.ok) {
-        throw new Error("Translation failed");
+      // Configure CORS first (only needed once per deployment or if CORS settings change)
+      try {
+        await fetch("/api/configure-cors", { method: "GET" });
+      } catch (corsError) {
+        console.warn("Could not configure CORS, might already be set:", corsError);
       }
       
-      // Parse the JSON response instead of treating it as a blob
-      const data = await res.json();
+      // Step 1: Get a signed URL for uploading
+      const signedUrlResponse = await fetch("/api/gcs-signed-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type || "application/octet-stream"
+        }),
+      });
       
-      // Use the downloadUrl from the response
+      if (!signedUrlResponse.ok) {
+        const errorData = await signedUrlResponse.json();
+        throw new Error(errorData.error || "Failed to get upload URL");
+      }
+      
+      const { signedUrl, fileName } = await signedUrlResponse.json();
+      
+      // Step 2: Upload file directly to GCS
+      let uploadSuccessful = false;
+      
+      try {
+        // Try direct upload first
+        uploadSuccessful = await uploadFileToGcs(file, signedUrl);
+      } catch (error) {
+        console.error("Direct upload failed, trying fallback:", error);
+        setCurrentStep("Direct upload failed, trying alternative method...");
+        
+        try {
+          // Try fallback upload if direct upload fails
+          uploadSuccessful = await fallbackUpload(file, signedUrl, fileName);
+        } catch (fallbackError) {
+          console.error("Fallback upload also failed:", fallbackError);
+          throw new Error("All upload methods failed. Please try again later.");
+        }
+      }
+      
+      if (!uploadSuccessful) {
+        throw new Error("File upload failed");
+      }
+      
+      setCurrentStep("Processing and translating file...");
+      
+      // Get a read URL for the uploaded file
+      const getReadUrlResponse = await fetch("/api/gcs-read-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fileName }),
+      });
+      
+      if (!getReadUrlResponse.ok) {
+        throw new Error("Failed to get read URL for uploaded file");
+      }
+      
+      const { readUrl } = await getReadUrlResponse.json();
+      
+      // Step 3: Trigger processing of the uploaded file
+      const processResponse = await fetch("/api/process-file", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileName,
+          targetLang,
+          fileUrl: readUrl
+        }),
+      });
+      
+      if (!processResponse.ok) {
+        const errorData = await processResponse.json();
+        throw new Error(errorData.error || "Translation process failed");
+      }
+      
+      const data = await processResponse.json();
       setDownloadUrl(data.downloadUrl);
+      setCurrentStep("Translation complete!");
       setLoading(false);
+      
     } catch (error) {
+      console.error(error);
       alert("Translation failed: " + (error instanceof Error ? error.message : "Unknown error"));
+      setCurrentStep("Error occurred");
       setLoading(false);
     }
   };
@@ -185,6 +358,32 @@ export default function TranslatePage() {
             </select>
           </div>
 
+          {/* Add upload progress indicator */}
+          {loading && uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="mt-4">
+              <p className="text-center mb-2">{currentStep}</p>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-primary h-2.5 rounded-full" 
+                  style={{width: `${uploadProgress}%`}}
+                ></div>
+              </div>
+              <p className="text-center mt-2">{uploadProgress}% uploaded</p>
+            </div>
+          )}
+          
+          {loading && uploadProgress === 100 && (
+            <div className="mt-4 text-center">
+              <p>{currentStep}</p>
+              <div className="mt-4 flex justify-center">
+                <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-center">
             <button
               type="submit"
@@ -215,7 +414,7 @@ export default function TranslatePage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  <span>Translating...</span>
+                  <span>Processing...</span>
                 </>
               ) : (
                 <>

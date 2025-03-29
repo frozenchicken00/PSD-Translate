@@ -32,7 +32,6 @@ const adobeAuth = new ClientOAuth2({
 // GCS Configuration
 const storage = new Storage({
   keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEYFILE,
-  // credentials: JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}'),
   projectId: process.env.GCS_PROJECT_ID,
 });
 
@@ -84,33 +83,6 @@ async function translateText(text: string = "", targetLang = DEFAULT_TARGET_LANG
 }
 
 /**
- * Uploads a file to Google Cloud Storage and returns a signed URL for reading
- * @param {Buffer} fileBuffer - The file buffer to upload
- * @param {string} fileName - The name of the file in GCS
- * @returns {Promise<string>} - The signed URL for reading
- */
-async function uploadToGCS(fileBuffer: Buffer, fileName: string) {
-  const file = bucket.file(fileName);
-  await file.save(fileBuffer, {
-    contentType: "image/vnd.adobe.photoshop",
-  });
-
-  // Verify upload success
-  const [exists] = await file.exists();
-  if (!exists) {
-    throw new Error(`Failed to upload ${fileName} to GCS`);
-  }
-
-  const [signedUrl] = await file.getSignedUrl({
-    action: "read",
-    expires: Date.now() + 2 * 60 * 60 * 1000, // 2 hours
-  });
-
-  console.log(`Generated read signed URL for ${fileName}: ${signedUrl}`);
-  return signedUrl;
-}
-
-/**
  * Generates a signed URL for writing to a file in GCS
  * @param {string} fileName - The name of the file in GCS
  * @returns {Promise<string>} - The signed URL for writing
@@ -137,13 +109,7 @@ async function getWriteSignedUrl(fileName: string) {
  */
 async function postPhotoshopAPI(endpoint:string, apiKey:string, token:string, requestBody:object) {
   console.log("Sending request to:", endpoint);
-  console.log("Headers:", {
-    Authorization: `Bearer ${token}`,
-    "x-api-key": apiKey,
-    "Content-Type": "application/json",
-  });
-  console.log("Body:", JSON.stringify(requestBody, null, 2));
-
+  
   // Add retry logic for transient errors
   const maxRetries = 3;
   let retryCount = 0;
@@ -170,7 +136,7 @@ async function postPhotoshopAPI(endpoint:string, apiKey:string, token:string, re
       const responseText = await response.text();
       console.log("API response:", response.status, responseText);
 
-      // Check for rate limiting or server errors (retryable)
+      // For retryable errors
       if (!response.ok && (response.status === 429 || (response.status >= 500 && response.status < 600))) {
         if (retryCount < maxRetries) {
           const retryAfter = response.headers.get('retry-after');
@@ -237,7 +203,7 @@ async function postPhotoshopAPI(endpoint:string, apiKey:string, token:string, re
  */
 async function pollStatus(pollingUrl:string, apiKey:string, token:string, type = "operation") {
   let attempts = 0;
-  const maxAttempts = 20; // Increased from 15 to 20 for more reliability
+  const maxAttempts = 20;
   const initialDelay = 5000;
   let delay = initialDelay;
   let consecutiveErrors = 0;
@@ -254,14 +220,12 @@ async function pollStatus(pollingUrl:string, apiKey:string, token:string, type =
           "x-api-key": apiKey,
           "Content-Type": "application/json",
         },
-        // Adding timeout for the fetch request
         signal: AbortSignal.timeout(30000), // 30 second timeout
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         
-        // If we get a server error (5xx), we can retry
         if (response.status >= 500) {
           consecutiveErrors++;
           console.log(`Server error (${response.status}), consecutive errors: ${consecutiveErrors}`);
@@ -270,14 +234,11 @@ async function pollStatus(pollingUrl:string, apiKey:string, token:string, type =
             throw new Error(`Too many consecutive errors polling for ${type}: ${response.status} - ${errorText}`);
           }
           
-          // Exponential backoff for server errors
           delay = Math.min(delay * 1.5, 30000); // Cap at 30 seconds
         } else {
-          // Client errors (4xx) are fatal
           throw new Error(`Polling failed for ${type}: ${response.status} - ${errorText}`);
         }
       } else {
-        // Reset error counter and delay on successful response
         consecutiveErrors = 0;
         delay = initialDelay;
         
@@ -293,12 +254,7 @@ async function pollStatus(pollingUrl:string, apiKey:string, token:string, type =
             return body;
           } else if (output.status === "failed") {
             throw new Error(`${type} failed: ${JSON.stringify(output.errors || body)}`);
-          } else if (output.status === "running" || output.status === "pending" || output.status === "processing") {
-            // Operation is still in progress, continue polling
-            console.log(`${type} is still ${output.status}...`);
           }
-        } else {
-          console.log(`${type} status: unknown (no outputs)`);
         }
       }
 
@@ -312,11 +268,10 @@ async function pollStatus(pollingUrl:string, apiKey:string, token:string, type =
         continue;
       }
       
-      // Rethrow other errors
       throw error;
     }
   }
-  throw new Error(`Polling for ${type} timed out after ${maxAttempts} attempts (${maxAttempts * delay / 1000} seconds)`);
+  throw new Error(`Polling for ${type} timed out after ${maxAttempts} attempts`);
 }
 
 /**
@@ -352,35 +307,24 @@ function findTextLayers(layers: Layer[]): Layer[] {
  * Fetches the PSD document manifest from Adobe API
  * @param {string} token - IMS Token
  * @param {string} apiKey - API Key
- * @param {Buffer} inputPsdBuffer - Buffer of the input PSD file
- * @param {string} fileName - Name of the input file
+ * @param {string} gcsUrl - URL of the file in GCS
  * @returns {Promise<any>}
  */
-async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer:Buffer, fileName:string) {
+async function getDocumentManifest(token:string, apiKey:string, gcsUrl:string) {
   try {
-    // Validate inputs
     if (!token || !apiKey) {
       throw new Error("Missing required authentication parameters");
     }
     
-    if (!inputPsdBuffer || inputPsdBuffer.length === 0) {
-      throw new Error("Empty or invalid PSD buffer");
-    }
-    
-    // Upload file to GCS and get URL
-    const gcsUrl = await uploadToGCS(inputPsdBuffer, fileName);
-    
-    // Validate URL
     if (!gcsUrl || !gcsUrl.startsWith('https://')) {
-      throw new Error("Invalid GCS URL generated");
+      throw new Error("Invalid GCS URL provided");
     }
     
-    // Make API request with additional error handling
     const initialResponse = await postPhotoshopAPI(MANIFEST_ENDPOINT, apiKey, token, {
       inputs: [{ 
         href: gcsUrl, 
         storage: "external",
-        type: "image/vnd.adobe.photoshop"  // Adding explicit type
+        type: "image/vnd.adobe.photoshop"
       }]
     });
 
@@ -392,7 +336,6 @@ async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer:B
       return await pollStatus(initialResponse._links.self.href, apiKey, token, "Manifest");
     }
     
-    // Check for error in response
     if (initialResponse.error || initialResponse.code) {
       throw new Error(`API Error: ${initialResponse.error || initialResponse.code}: ${initialResponse.message || JSON.stringify(initialResponse)}`);
     }
@@ -404,44 +347,25 @@ async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer:B
   }
 }
 
-/**
- * Main API handler for translating PSD files
- */
 export async function POST(req: NextRequest) {
   try {
-    // Parse form data
-    const formData = await req.formData();
-    const fileField = formData.get("psd");
-    const targetLangField = formData.get("targetLang");
-
-    if (!(fileField instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-    }
-
-    const targetLang = typeof targetLangField === "string" ? targetLangField : "EN";
-    const arrayBuffer = await fileField.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const { fileName, targetLang = DEFAULT_TARGET_LANG, fileUrl } = await req.json();
     
-    // Validate file
-    if (buffer.length === 0) {
-      return NextResponse.json({ error: "Empty file uploaded" }, { status: 400 });
+    if (!fileName) {
+      return NextResponse.json({ error: "File name is required" }, { status: 400 });
     }
     
-    // Check file type (basic validation)
-    const isPSD = fileField.name.toLowerCase().endsWith('.psd');
-    if (!isPSD) {
-      return NextResponse.json({ error: "Only PSD files are supported" }, { status: 400 });
+    if (!fileUrl) {
+      return NextResponse.json({ error: "File URL is required" }, { status: 400 });
     }
     
     // Ensure consistent filename formatting
-    const originalFileName = fileField.name;
-    const sanitizedFileName = originalFileName.replace(/\s+/g, '-').toLowerCase();
+    const sanitizedFileName = fileName.replace(/\s+/g, '-').toLowerCase();
     const outputFileName = sanitizedFileName.replace('.psd', '-translated.psd');
 
     // Translate PSD
     console.log("Authenticating with Adobe...");
     
-    // Validate Adobe configuration
     if (!imsConfig.clientId) {
       return NextResponse.json({ error: "Missing Adobe API client ID configuration" }, { status: 500 });
     }
@@ -463,11 +387,10 @@ export async function POST(req: NextRequest) {
     console.log("Fetching PSD document manifest...");
     let manifest;
     try {
-      manifest = await getDocumentManifest(accessToken, imsConfig.clientId!, buffer, sanitizedFileName);
+      manifest = await getDocumentManifest(accessToken, imsConfig.clientId!, fileUrl);
     } catch (error) {
       console.error("Document manifest error:", error);
       
-      // Handle API-specific error codes
       if (error instanceof Error && error.message.includes("400")) {
         return NextResponse.json({ 
           error: "Invalid PSD file or format not supported by Adobe API", 
@@ -485,13 +408,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No outputs found in manifest response" }, { status: 500 });
     }
 
-    console.log("Manifest:", JSON.stringify(manifest, null, 2));
+    console.log("Processing manifest...");
     const textLayers = findTextLayers(manifest.outputs[0].layers);
     if (textLayers.length === 0) {
       return NextResponse.json({ 
         error: "No text layers found in PSD; nothing to translate", 
         status: "completed" 
-      }, { status: 200 });  // Return 200 as this is not a server error
+      }, { status: 200 });
     }
 
     console.log("Found text layers:", JSON.stringify(textLayers, null, 2));
@@ -511,10 +434,9 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("Sending translated layers to Adobe API...");
-    const inputUrl = await uploadToGCS(buffer, sanitizedFileName);
     const outputUrl = await getWriteSignedUrl(outputFileName);
     const requestBody = {
-      inputs: [{ href: inputUrl, storage: "external" }],
+      inputs: [{ href: fileUrl, storage: "external" }],
       options: { layers: translatedLayers },
       outputs: [
         {
@@ -537,12 +459,13 @@ export async function POST(req: NextRequest) {
       throw new Error(`Translated file ${outputFileName} not found in storage`);
     }
     
-    // Optional: Validate file by downloading it to check size
-    const [fileContents] = await bucket.file(outputFileName).download();
-    console.log(`Verified ${outputFileName}, size: ${fileContents.length} bytes`);
+    // Validate file by checking size
+    const [fileMetadata] = await bucket.file(outputFileName).getMetadata();
+    const fileSize = fileMetadata.size ? parseInt(String(fileMetadata.size)) : 0;
+    console.log(`Verified ${outputFileName}, size: ${fileSize} bytes`);
     
-    if (fileContents.length < 100) {
-      throw new Error(`Translated file ${outputFileName} appears to be invalid (too small: ${fileContents.length} bytes)`);
+    if (fileSize < 100) {
+      throw new Error(`Translated file ${outputFileName} appears to be invalid (too small: ${fileSize} bytes)`);
     }
 
     // Generate signed URL for download with longer expiration
@@ -564,24 +487,11 @@ export async function POST(req: NextRequest) {
       }
     }, 30 * 60 * 1000);
 
-    // Create response object
-    const responseData = { 
+    return NextResponse.json({ 
       downloadUrl: signedUrl,
       filename: outputFileName,
-      size: fileContents.length,
+      size: fileSize,
       status: "success"
-    };
-
-    // Measure response size
-    const responseSize = new TextEncoder().encode(JSON.stringify(responseData)).length;
-    console.log(`Response payload size: ${responseSize} bytes`);
-
-    // Add size information to response for debugging
-    return NextResponse.json({
-      ...responseData,
-      _debug: {
-        responseSize: `${responseSize} bytes`
-      }
     });
   } catch (error) {
     console.error("Translation error:", error);
@@ -589,4 +499,4 @@ export async function POST(req: NextRequest) {
       error: error instanceof Error ? error.message : "Internal Server Error" 
     }, { status: 500 });
   }
-}
+} 
