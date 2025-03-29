@@ -62,7 +62,7 @@ export default function TranslatePage() {
     formData.append("targetLang", targetLang);
   
     try {
-      const res = await fetch("/api/translate", {
+      const res = await fetch("/api/translate-start", {
         method: "POST",
         body: formData,
       });
