@@ -1,14 +1,14 @@
 {
   "functions": {
-    "api/translate-start/**": {
+    "src/app/api/translate-start/**": {
       "memory": 1024,
       "maxDuration": 60
     },
-    "api/gcs-upload-url/**": {
+    "src/app/api/gcs-upload-url/**": {
       "memory": 1024,
       "maxDuration": 10
     },
-    "api/translation-status/**": {
+    "src/app/api/translation-status/**": {
       "memory": 1024,
       "maxDuration": 10
     }
