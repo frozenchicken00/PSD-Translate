@@ -564,11 +564,24 @@ export async function POST(req: NextRequest) {
       }
     }, 30 * 60 * 1000);
 
-    return NextResponse.json({ 
+    // Create response object
+    const responseData = { 
       downloadUrl: signedUrl,
       filename: outputFileName,
       size: fileContents.length,
       status: "success"
+    };
+
+    // Measure response size
+    const responseSize = new TextEncoder().encode(JSON.stringify(responseData)).length;
+    console.log(`Response payload size: ${responseSize} bytes`);
+
+    // Add size information to response for debugging
+    return NextResponse.json({
+      ...responseData,
+      _debug: {
+        responseSize: `${responseSize} bytes`
+      }
     });
   } catch (error) {
     console.error("Translation error:", error);
