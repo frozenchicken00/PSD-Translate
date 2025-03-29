@@ -56,27 +56,86 @@ export default function TranslatePage() {
     e.preventDefault();
     if (!file) return;
     setLoading(true);
-  
-    const formData = new FormData();
-    formData.append("psd", file);
-    formData.append("targetLang", targetLang);
-  
+    
     try {
-      const res = await fetch("/api/translate-start", {
+      // Step 1: Get a signed URL for direct upload
+      const urlResponse = await fetch("/api/gcs-upload-url", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: "image/vnd.adobe.photoshop",
+        }),
       });
       
-      if (!res.ok) {
-        throw new Error("Translation failed");
+      if (!urlResponse.ok) {
+        throw new Error(`Failed to get upload URL: ${await urlResponse.text()}`);
       }
       
-      // Parse the JSON response instead of treating it as a blob
-      const data = await res.json();
+      const { uploadUrl, fileKey } = await urlResponse.json();
       
-      // Use the downloadUrl from the response
-      setDownloadUrl(data.downloadUrl);
-      setLoading(false);
+      // Step 2: Upload file directly to GCS
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": "image/vnd.adobe.photoshop" },
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error(`Failed to upload file: ${uploadResponse.statusText}`);
+      }
+      
+      // Step 3: Start the translation process
+      const translateResponse = await fetch("/api/translate-start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileKey,
+          targetLang,
+        }),
+      });
+      
+      if (!translateResponse.ok) {
+        throw new Error(`Failed to start translation: ${await translateResponse.text()}`);
+      }
+      
+      const data = await translateResponse.json();
+      
+      // For now, directly set downloadUrl if it's available
+      // In a production app, you would poll for job completion
+      if (data.downloadUrl) {
+        setDownloadUrl(data.downloadUrl);
+      } else if (data.jobId) {
+        // Poll for status (simplified version)
+        let pollCount = 0;
+        const maxPolls = 20;
+        
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(`/api/translation-status?jobId=${data.jobId}`);
+            if (!statusResponse.ok) {
+              clearInterval(pollInterval);
+              throw new Error("Failed to check translation status");
+            }
+            
+            const statusData = await statusResponse.json();
+            
+            if (statusData.status === "completed" && statusData.downloadUrl) {
+              clearInterval(pollInterval);
+              setDownloadUrl(statusData.downloadUrl);
+              setLoading(false);
+            } else if (statusData.status === "failed" || pollCount >= maxPolls) {
+              clearInterval(pollInterval);
+              throw new Error(statusData.error || "Translation failed or timed out");
+            }
+            
+            pollCount++;
+          } catch (error) {
+            clearInterval(pollInterval);
+            throw error;
+          }
+        }, 5000); // Poll every 5 seconds
+      }
     } catch (error) {
       alert("Translation failed: " + (error instanceof Error ? error.message : "Unknown error"));
       setLoading(false);
