@@ -352,23 +352,39 @@ function findTextLayers(layers: Layer[]): Layer[] {
  * Fetches the PSD document manifest from Adobe API
  * @param {string} token - IMS Token
  * @param {string} apiKey - API Key
- * @param {Buffer} inputPsdBuffer - Buffer of the input PSD file
+ * @param {Buffer} inputPsdBuffer - Buffer of the input PSD file (optional)
  * @param {string} fileName - Name of the input file
+ * @param {string} gcsFilePath - GCS file path (optional)
  * @returns {Promise<any>}
  */
-async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer:Buffer, fileName:string) {
+async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer?:Buffer, fileName?:string, gcsFilePath?:string) {
   try {
     // Validate inputs
     if (!token || !apiKey) {
       throw new Error("Missing required authentication parameters");
     }
     
-    if (!inputPsdBuffer || inputPsdBuffer.length === 0) {
-      throw new Error("Empty or invalid PSD buffer");
-    }
+    let gcsUrl;
     
-    // Upload file to GCS and get URL
-    const gcsUrl = await uploadToGCS(inputPsdBuffer, fileName);
+    if (gcsFilePath) {
+      // If gcsFilePath is provided, generate a signed URL for that file
+      const file = bucket.file(gcsFilePath);
+      const [exists] = await file.exists();
+      
+      if (!exists) {
+        throw new Error(`File ${gcsFilePath} not found in GCS bucket`);
+      }
+      
+      [gcsUrl] = await file.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 2 * 60 * 60 * 1000, // 2 hours
+      });
+    } else if (inputPsdBuffer && fileName) {
+      // Upload file to GCS and get URL
+      gcsUrl = await uploadToGCS(inputPsdBuffer, fileName);
+    } else {
+      throw new Error("Either file buffer or GCS file path must be provided");
+    }
     
     // Validate URL
     if (!gcsUrl || !gcsUrl.startsWith('https://')) {
@@ -409,33 +425,65 @@ async function getDocumentManifest(token:string, apiKey:string, inputPsdBuffer:B
  */
 export async function POST(req: NextRequest) {
   try {
-    // Parse form data
-    const formData = await req.formData();
-    const fileField = formData.get("psd");
-    const targetLangField = formData.get("targetLang");
-
-    if (!(fileField instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-    }
-
-    const targetLang = typeof targetLangField === "string" ? targetLangField : "EN";
-    const arrayBuffer = await fileField.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    // Check content type to determine if we're dealing with form data or JSON
+    const contentType = req.headers.get('content-type') || '';
     
-    // Validate file
-    if (buffer.length === 0) {
-      return NextResponse.json({ error: "Empty file uploaded" }, { status: 400 });
+    let targetLang = DEFAULT_TARGET_LANG;
+    let buffer: Buffer | undefined;
+    let sanitizedFileName: string;
+    let gcsFilePath: string | undefined;
+    
+    // Handle different request formats
+    if (contentType.includes('multipart/form-data')) {
+      // Parse form data (legacy approach with file upload)
+      const formData = await req.formData();
+      const fileField = formData.get("psd");
+      const targetLangField = formData.get("targetLang");
+      
+      if (!(fileField instanceof File)) {
+        return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+      }
+      
+      targetLang = typeof targetLangField === "string" ? targetLangField : DEFAULT_TARGET_LANG;
+      const arrayBuffer = await fileField.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+      
+      // Validate file
+      if (buffer.length === 0) {
+        return NextResponse.json({ error: "Empty file uploaded" }, { status: 400 });
+      }
+      
+      // Check file type (basic validation)
+      const isPSD = fileField.name.toLowerCase().endsWith('.psd');
+      if (!isPSD) {
+        return NextResponse.json({ error: "Only PSD files are supported" }, { status: 400 });
+      }
+      
+      // Ensure consistent filename formatting
+      const originalFileName = fileField.name;
+      sanitizedFileName = originalFileName.replace(/\s+/g, '-').toLowerCase();
+      
+    } else {
+      // Parse JSON payload (new approach with GCS file path)
+      const body = await req.json();
+      
+      if (!body.gcsFilePath) {
+        return NextResponse.json({ error: "Missing gcsFilePath parameter" }, { status: 400 });
+      }
+      
+      gcsFilePath = body.gcsFilePath;
+      targetLang = body.targetLang || DEFAULT_TARGET_LANG;
+      
+      // Extract filename from GCS path
+      sanitizedFileName = gcsFilePath.split('/').pop() || 'file.psd';
+      
+      // Verify file exists and is a PSD
+      if (!sanitizedFileName.toLowerCase().endsWith('.psd')) {
+        return NextResponse.json({ error: "Only PSD files are supported" }, { status: 400 });
+      }
     }
     
-    // Check file type (basic validation)
-    const isPSD = fileField.name.toLowerCase().endsWith('.psd');
-    if (!isPSD) {
-      return NextResponse.json({ error: "Only PSD files are supported" }, { status: 400 });
-    }
-    
-    // Ensure consistent filename formatting
-    const originalFileName = fileField.name;
-    const sanitizedFileName = originalFileName.replace(/\s+/g, '-').toLowerCase();
+    // Prepare output filename
     const outputFileName = sanitizedFileName.replace('.psd', '-translated.psd');
 
     // Translate PSD
@@ -463,7 +511,7 @@ export async function POST(req: NextRequest) {
     console.log("Fetching PSD document manifest...");
     let manifest;
     try {
-      manifest = await getDocumentManifest(accessToken, imsConfig.clientId!, buffer, sanitizedFileName);
+      manifest = await getDocumentManifest(accessToken, imsConfig.clientId!, buffer, sanitizedFileName, gcsFilePath);
     } catch (error) {
       console.error("Document manifest error:", error);
       
@@ -511,7 +559,19 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("Sending translated layers to Adobe API...");
-    const inputUrl = await uploadToGCS(buffer, sanitizedFileName);
+    // Get input URL
+    let inputUrl;
+    if (gcsFilePath) {
+      [inputUrl] = await bucket.file(gcsFilePath).getSignedUrl({
+        action: "read",
+        expires: Date.now() + 2 * 60 * 60 * 1000, // 2 hours
+      });
+    } else if (buffer) {
+      inputUrl = await uploadToGCS(buffer, sanitizedFileName);
+    } else {
+      throw new Error("No input file available - neither buffer nor GCS path was valid");
+    }
+    
     const outputUrl = await getWriteSignedUrl(outputFileName);
     const requestBody = {
       inputs: [{ href: inputUrl, storage: "external" }],
